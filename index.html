@@ -3,11 +3,10 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>Calendrier Spirale 2026 V3</title>
+  <title>Calendrier Spirale 2026 V4</title>
   <style>
     :root{
       --bg-light:#f5f7fa;
-      --spiral-line:#a0c0ff;
       --weekday:#4a90e2;
       --weekend:#2ecc71;
       --selected:#ff6b6b;
@@ -29,6 +28,7 @@
       border-right:1px solid var(--selected);
       transform:translateX(-100%); transition:transform 0.3s ease;
       pointer-events:auto; display:flex; flex-direction:column; padding:20px; box-sizing:border-box;
+      box-shadow: 5px 0 15px rgba(0,0,0,0.05);
     }
     #rdv-panel.open{transform:translateX(0);}
     
@@ -56,8 +56,8 @@
 
     #table-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:3px; font-size:10px;}
     .table-day{padding:5px; border:1px solid #f0f0f0; border-radius:4px; text-align:center; cursor:pointer; background:#fff;}
-    .table-day.weekend{color:#aaa;}
-    .table-day.holiday{color:#e74c3c; font-weight:bold;}
+    .table-day.weekend{background:var(--weekend); color:#fff;}
+    .table-day.holiday{background:#e74c3c; color:#fff;}
     .table-day.today-cell{background:var(--today); color:black; font-weight:bold;}
     .table-day.selected-cell{border:2px solid var(--selected); background:#fff5f5;}
 
@@ -77,16 +77,16 @@
 
     <div id="rdv-panel">
       <button class="close-btn" id="close-rdv">✖</button>
-      <h3>Nouveau Rendez-vous</h3>
+      <h3 style="margin-top:0;">Nouveau RDV</h3>
       <form id="rdv-form">
         <input name="title" placeholder="Titre" required />
         <input name="date" type="date" required />
         <input name="time" type="time" required />
         <input name="location" placeholder="Lieu" />
         <select name="priority">
-          <option value="1">Importance : Faible</option>
-          <option value="2">Importance : Moyenne</option>
-          <option value="3">Importance : Haute</option>
+          <option value="1">Importance : Faible (Vert)</option>
+          <option value="2">Importance : Moyenne (Jaune)</option>
+          <option value="3">Importance : Haute (Rouge)</option>
         </select>
         <textarea name="description" placeholder="Notes..." rows="2"></textarea>
         <button type="submit" style="background:var(--selected); color:white; font-weight:bold; cursor:pointer; border:none;">Ajouter</button>
@@ -107,33 +107,52 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script>
+    // Configuration stricte selon votre fichier V2.3
     const CONFIG={
       year:2026, spiralRadius:28, spiralHeight:70, turns:3.5, pointSize:.8,
-      colors:{ weekday:0x4a90e2, weekend:0x2ecc71, selected:0xff6b6b, today:0xf1c40f }
+      colors:{ 
+        weekday:0x4a90e2, 
+        weekend:0x2ecc71, 
+        selected:0xff6b6b, 
+        today:0xf1c40f 
+      }
     };
+
     let scene, camera, renderer, controls, raycaster, pointer, instancedMesh;
     let daysData=[], hoveredIndex=-1, selectedIndex=-1, todayIndex=-1;
-    let rdvs = JSON.parse(localStorage.getItem('rdv2026_v3') || '[]');
+    let rdvs = JSON.parse(localStorage.getItem('rdv2026_v4') || '[]');
 
     const joursFeries=['2026-01-01','2026-04-13','2026-05-01','2026-05-08','2026-05-21','2026-06-01','2026-07-14','2026-08-15','2026-11-01','2026-11-11','2026-12-25'];
 
     function init(){
-      scene=new THREE.Scene(); scene.background=new THREE.Color(0xf5f7fa);
+      scene=new THREE.Scene(); 
+      scene.background=new THREE.Color(0xf5f7fa);
+      // Ajout du brouillard doux comme dans votre fichier original
+      scene.fog = new THREE.FogExp2(0xf5f7fa, 0.008);
+
       camera=new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
-      camera.position.set(65, 45, 65);
-      renderer=new THREE.WebGLRenderer({antialias:true});
+      camera.position.set(60, 50, 60);
+
+      renderer=new THREE.WebGLRenderer({antialias:true}); // Antialiasing activé
+      renderer.setPixelRatio(window.devicePixelRatio);    // Pour la netteté (évite le flou)
       renderer.setSize(window.innerWidth, window.innerHeight);
       document.getElementById('canvas-container').appendChild(renderer.domElement);
       
-      const hemi=new THREE.HemisphereLight(0xffffff, 0x444444, 1.3); scene.add(hemi);
+      const hemi=new THREE.HemisphereLight(0xffffff, 0x444444, 1.2); 
+      scene.add(hemi);
+
       controls=new THREE.OrbitControls(camera, renderer.domElement);
-      raycaster=new THREE.Raycaster(); pointer=new THREE.Vector2();
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      raycaster=new THREE.Raycaster(); 
+      pointer=new THREE.Vector2();
 
       buildSpiral();
       buildTable();
       renderRDVList();
 
-      // Events
+      // Événements UI
       window.addEventListener('mousemove', onPointer);
       window.addEventListener('click', onClick);
       document.getElementById('rdv-form').addEventListener('submit', addRDV);
@@ -148,15 +167,16 @@
     }
 
     function buildSpiral(){
-      const total = 365;
+      const isLeap = (CONFIG.year % 4 === 0 && CONFIG.year % 100 !== 0) || CONFIG.year % 400 === 0;
+      const total = isLeap ? 366 : 365;
       const geo = new THREE.SphereGeometry(CONFIG.pointSize, 16, 16);
-      const mat = new THREE.MeshStandardMaterial({roughness:.4});
+      const mat = new THREE.MeshStandardMaterial({roughness:.3, metalness:.2});
       instancedMesh = new THREE.InstancedMesh(geo, mat, total);
       instancedMesh.userData.originalColors = [];
       
       const dummy = new THREE.Object3D();
       const color = new THREE.Color();
-      let cur = new Date(2026, 0, 1);
+      let cur = new Date(CONFIG.year, 0, 1);
       const now = new Date();
 
       for(let i=0; i<total; i++){
@@ -166,13 +186,16 @@
         const z = Math.sin(angle) * CONFIG.spiralRadius;
         const y = (t * CONFIG.spiralHeight) - (CONFIG.spiralHeight/2);
         
-        dummy.position.set(x, y, z); dummy.updateMatrix();
+        dummy.position.set(x, y, z); 
+        dummy.updateMatrix();
         instancedMesh.setMatrixAt(i, dummy.matrix);
 
         const isWeekend = cur.getDay() === 0 || cur.getDay() === 6;
-        color.setHex(isWeekend ? CONFIG.colors.weekend : CONFIG.colors.weekday);
+        if(isWeekend) color.setHex(CONFIG.colors.weekend);
+        else color.setHex(CONFIG.colors.weekday);
         
         const dateStr = cur.toISOString().split('T')[0];
+        // Couleur Aujourd'hui
         if(dateStr === now.toISOString().split('T')[0]) {
           todayIndex = i;
           color.setHex(CONFIG.colors.today);
@@ -184,32 +207,38 @@
             index: i, 
             dateStr: dateStr, 
             pos: new THREE.Vector3(x,y,z),
-            monthIndex: cur.getMonth()
+            monthIndex: cur.getMonth(),
+            fullDate: cur.toLocaleDateString('fr-FR', {day:'numeric', month:'long'})
         });
         cur.setDate(cur.getDate()+1);
       }
       scene.add(instancedMesh);
 
-      // Remettre le nom des mois dans la spirale
-      const monthNames=["JANVIER","FÉVRIER","MARS","AVRIL","MAI","JUIN","JUILLET","AOÛT","SEPTEMBRE","OCTOBRE","NOVEMBRE","DÉCEMBRE"];
-      monthNames.forEach((name, mIdx)=>{
-        const d = daysData.find(dd => dd.monthIndex === mIdx && dd.dateStr.endsWith('-15'));
+      // Noms des mois avec votre style exact (V2.3)
+      const months=["JANVIER","FÉVRIER","MARS","AVRIL","MAI","JUIN","JUILLET","AOÛT","SEPTEMBRE","OCTOBRE","NOVEMBRE","DÉCEMBRE"];
+      months.forEach((name, mIdx)=>{
+        const d = daysData.find(dd => dd.monthIndex === mIdx && dd.fullDate.includes('15'));
         if(d){
-          const sprite = createTextSprite(name);
+          const sprite = createTextSprite(name, 1.3); // Échelle 1.3 comme demandé
           const angle = Math.atan2(d.pos.z, d.pos.x);
-          sprite.position.set(d.pos.x + Math.cos(angle)*8, d.pos.y, d.pos.z + Math.sin(angle)*8);
+          sprite.position.set(d.pos.x + Math.cos(angle)*7, d.pos.y, d.pos.z + Math.sin(angle)*7);
           scene.add(sprite);
         }
       });
     }
 
-    function createTextSprite(msg){
-      const canvas=document.createElement('canvas'); const ctx=canvas.getContext('2d');
-      canvas.width=512; canvas.height=128; ctx.font='bold 50px Segoe UI';
-      ctx.fillStyle='rgba(44,62,80,0.8)'; ctx.textAlign='center'; ctx.fillText(msg, 256, 80);
+    // Votre fonction createTextSprite originale (Police Arial, couleur sombre)
+    function createTextSprite(msg, scale=1){
+      const canvas=document.createElement('canvas'), ctx=canvas.getContext('2d');
+      canvas.width=512; canvas.height=128; 
+      ctx.font='bold 48px Arial'; // Police Arial comme votre fichier
+      ctx.fillStyle='rgba(44,62,80,1)'; 
+      ctx.textAlign='center'; 
+      ctx.fillText(msg, 256, 80);
       const map=new THREE.CanvasTexture(canvas);
       const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map, transparent:true}));
-      sprite.scale.set(10, 2.5, 1); return sprite;
+      sprite.scale.set(10*scale, 2.5*scale, 1); 
+      return sprite;
     }
 
     function buildTable(){
@@ -217,7 +246,7 @@
       const months = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
       months.forEach((mName, mIdx) => {
         const header = document.createElement('div');
-        header.style = "grid-column: span 7; font-weight:bold; padding:8px 0; color:var(--weekday); border-bottom:1px solid #eee;";
+        header.style = "grid-column: span 7; font-weight:bold; padding:8px 0; color:var(--text); border-bottom:1px solid #eee;";
         header.textContent = mName; grid.appendChild(header);
 
         ['L','M','M','J','V','S','D'].forEach(d => {
@@ -233,9 +262,14 @@
         for(let d=1; d<=daysInMonth; d++){
           const dateStr = `2026-${String(mIdx+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
           const dayEl = document.createElement('div');
-          dayEl.className = 'table-day'; dayEl.id = 'table-day-' + dateStr; dayEl.textContent = d;
+          dayEl.className = 'table-day'; 
+          dayEl.id = 'table-day-' + dateStr; 
+          dayEl.textContent = d;
           
           if(joursFeries.includes(dateStr)) dayEl.classList.add('holiday');
+          const isWeekend = new Date(2026, mIdx, d).getDay() % 6 === 0;
+          if(isWeekend) dayEl.classList.add('weekend');
+          
           if(dateStr === new Date().toISOString().split('T')[0]) dayEl.classList.add('today-cell');
           
           dayEl.onclick = () => {
@@ -255,27 +289,28 @@
       if(index === -1) return;
       const d = daysData[index];
 
-      // Couleur de sélection dans la spirale
-      if(selectedIndex !== -1){
+      // Gestion des couleurs de sélection sur la spirale
+      if(selectedIndex !== -1 && selectedIndex !== todayIndex){
         instancedMesh.setColorAt(selectedIndex, instancedMesh.userData.originalColors[selectedIndex]);
       }
       selectedIndex = index;
       instancedMesh.setColorAt(selectedIndex, new THREE.Color(CONFIG.colors.selected));
       instancedMesh.instanceColor.needsUpdate = true;
 
-      // Animation caméra
+      // Animation fluide de la caméra vers le point
       const targetPos = new THREE.Vector3(d.pos.x + 15, d.pos.y + 8, d.pos.z + 15);
       let alpha = 0;
+      const startPos = camera.position.clone();
       function move(){
-        alpha += 0.05;
-        camera.position.lerp(targetPos, 0.1);
+        alpha += 0.04;
+        camera.position.lerpVectors(startPos, targetPos, alpha);
         controls.target.lerp(d.pos, 0.1);
         controls.update();
-        if(alpha < 1.2) requestAnimationFrame(move);
+        if(alpha < 1) requestAnimationFrame(move);
       }
       move();
 
-      // UI
+      // Mise à jour visuelle dans l'onglet "Dates"
       document.querySelectorAll('.table-day').forEach(el => el.classList.remove('selected-cell'));
       const tableEl = document.getElementById('table-day-' + d.dateStr);
       if(tableEl) {
@@ -292,7 +327,7 @@
         id: Date.now(), title: fd.get('title'), date: fd.get('date'), time: fd.get('time'),
         location: fd.get('location'), priority: fd.get('priority'), description: fd.get('description')
       });
-      localStorage.setItem('rdv2026_v3', JSON.stringify(rdvs));
+      localStorage.setItem('rdv2026_v4', JSON.stringify(rdvs));
       renderRDVList(); e.target.reset();
     }
 
@@ -310,24 +345,33 @@
 
     function deleteRDV(id){
       rdvs = rdvs.filter(r => r.id !== id);
-      localStorage.setItem('rdv2026_v3', JSON.stringify(rdvs));
+      localStorage.setItem('rdv2026_v4', JSON.stringify(rdvs));
       renderRDVList();
     }
 
     function importRDVs(e){
       const reader = new FileReader();
       reader.onload = (ev) => {
-        try { rdvs = rdvs.concat(JSON.parse(ev.target.result)); localStorage.setItem('rdv2026_v3', JSON.stringify(rdvs)); renderRDVList(); } 
-        catch(err) { alert("Format invalide"); }
+        try { 
+          const data = JSON.parse(ev.target.result);
+          rdvs = rdvs.concat(data); 
+          localStorage.setItem('rdv2026_v4', JSON.stringify(rdvs)); 
+          renderRDVList(); 
+        } catch(err) { alert("Format JSON invalide"); }
       };
       reader.readAsText(e.target.files[0]);
     }
 
     function focusToday(){ if(todayIndex !== -1) focusDayIndex(todayIndex); }
-    function onPointer(e){ pointer.x = (e.clientX/window.innerWidth)*2-1; pointer.y = -(e.clientY/window.innerHeight)*2+1; }
+    
+    function onPointer(e){ 
+      pointer.x = (e.clientX/window.innerWidth)*2-1; 
+      pointer.y = -(e.clientY/window.innerHeight)*2+1; 
+    }
 
     function animate(){
       requestAnimationFrame(animate);
+      controls.update();
       raycaster.setFromCamera(pointer, camera);
       const inter = raycaster.intersectObject(instancedMesh);
       if(inter.length) hoveredIndex = inter[0].instanceId; else hoveredIndex = -1;
