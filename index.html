@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>Calendrier Spirale 2026 V4.1</title>
+  <title>Calendrier Spirale 2026 V4.2</title>
   <style>
     :root{
       --bg-light:#f5f7fa;
       --weekday:#4a90e2;
       --weekend:#2ecc71;
       --selected:#ff6b6b;
-      --today:#f1c40f;
+      --today:#fff9c4; /* Or très clair */
       --text:#2c3e50;
       --panel-bg:rgba(255,255,255,.95);
       --prio-1: #2ecc71;
@@ -71,7 +71,7 @@
     .table-day{padding:5px; border:1px solid #f0f0f0; border-radius:4px; text-align:center; cursor:pointer; background:#fff; position: relative;}
     .table-day.weekend{background:var(--weekend); color:#fff;}
     .table-day.holiday{background:#e74c3c; color:#fff;}
-    .table-day.today-cell{background:var(--today); color:black; font-weight:bold;}
+    .table-day.today-cell{background:var(--today); color:black; font-weight:bold; border: 1px solid #d4af37;}
     .table-day.selected-cell{border:2px solid var(--selected); background:#fff5f5;}
 
     .controls{position:absolute; bottom:20px; left:50%; transform:translateX(-50%); pointer-events:auto; display:flex; gap:10px;}
@@ -87,8 +87,7 @@
     <div class="controls">
       <button class="btn" id="btn-today">Aujourd'hui</button>
       <button class="btn" id="btn-rdv">Mes RDV</button>
-      <button class="btn" id="btn-table">Dates</button>
-    </div>
+      <button class="btn" id="btn-table">Table</button> </div>
 
     <div id="rdv-panel">
       <button class="close-btn" id="close-rdv">✖</button>
@@ -114,8 +113,7 @@
 
     <div id="table-panel">
       <button class="close-btn" id="close-dates">✖</button>
-      <h3 style="margin:0 0 10px 0;">Dates 2026</h3>
-      <div id="table-grid"></div>
+      <h3 style="margin:0 0 10px 0;">Table 2026</h3> <div id="table-grid"></div>
     </div>
   </div>
 
@@ -124,7 +122,12 @@
   <script>
     const CONFIG={
       year:2026, spiralRadius:28, spiralHeight:70, turns:3.5, pointSize:.8,
-      colors:{ weekday:0x4a90e2, weekend:0x2ecc71, selected:0xff6b6b, today:0xf1c40f }
+      colors:{ 
+        weekday:0x4a90e2, 
+        weekend:0x2ecc71, 
+        selected:0xff6b6b, 
+        today:0xfff9c4 // Or très clair
+      }
     };
 
     let scene, camera, renderer, controls, raycaster, pointer, instancedMesh;
@@ -132,8 +135,8 @@
     let mouseX = 0, mouseY = 0;
     let rdvs = JSON.parse(localStorage.getItem('rdv2026_v4') || '[]');
 
-    // Dictionnaire des jours fériés avec noms
-    const joursFeries = {
+    // Dictionnaire des jours fériés pour les bulles info
+    const nomsJoursFeries = {
       '2026-01-01': "Jour de l'An",
       '2026-04-06': "Lundi de Pâques",
       '2026-05-01': "Fête du Travail",
@@ -283,10 +286,10 @@
           dayEl.id = 'table-day-' + dateStr; 
           dayEl.textContent = d;
           
-          // Gestion des jours fériés avec Bulle Info (Title)
-          if(joursFeries[dateStr]) {
+          // Bulle info pour les jours fériés dans l'onglet Table
+          if(nomsJoursFeries[dateStr]) {
             dayEl.classList.add('holiday');
-            dayEl.title = joursFeries[dateStr]; // Bulle info native
+            dayEl.title = nomsJoursFeries[dateStr];
           }
 
           const isWeekend = new Date(2026, mIdx, d).getDay() % 6 === 0;
@@ -401,7 +404,7 @@
         hoveredIndex = inter[0].instanceId;
         const data = daysData[hoveredIndex];
         
-        // Affichage de la bulle info spirale
+        // Affichage de la bulle info spirale (Nom du jour + Date)
         tooltip.style.display = 'block';
         tooltip.style.left = mouseX + 'px';
         tooltip.style.top = mouseY + 'px';
