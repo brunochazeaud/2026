@@ -2,342 +2,195 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>Calendrier Spirale 2026 Pro</title>
-  <!-- Importation d'une police d'icônes pour les RDV -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Calendrier Spirale 2026 V4.1</title>
   <style>
     :root{
       --bg-light:#f5f7fa;
       --weekday:#4a90e2;
       --weekend:#2ecc71;
       --selected:#ff6b6b;
-      --today-gold:#FFD700; /* Or claire */
+      --today:#f1c40f;
       --text:#2c3e50;
-      --panel-bg:rgba(255,255,255,0.95);
-      --prio-1: #2ecc71; /* Vert */
-      --prio-2: #f1c40f; /* Jaune */
-      --prio-3: #e74c3c; /* Rouge */
+      --panel-bg:rgba(255,255,255,.95);
+      --prio-1: #2ecc71;
+      --prio-2: #f1c40f;
+      --prio-3: #e74c3c;
     }
-    body{margin:0;font-family:'Segoe UI', Arial, sans-serif;overflow:hidden;background:var(--bg-light); touch-action:none;}
-    #canvas-container{width:100vw;height:100vh;display:block; position: absolute; top:0; left:0; z-index: 1;}
+    body{margin:0;font-family:'Segoe UI',sans-serif;overflow:hidden;background:var(--bg-light);}
+    #canvas-container{width:100vw;height:100vh;display:block;}
     #ui-layer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;}
     
-    /* Panel de gauche : RDV */
+    /* Bulle info pour la spirale */
+    #spiral-tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: rgba(44, 62, 80, 0.9);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+      z-index: 100;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      transform: translate(15px, 15px);
+    }
+
     #rdv-panel{
       position:fixed; top:0; left:0; width:350px; height:100%;
-      background:var(--panel-bg); backdrop-filter:blur(20px);
+      background:var(--panel-bg); backdrop-filter:blur(10px);
       border-right:1px solid var(--selected);
-      transform:translateX(-100%); transition:transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      transform:translateX(-100%); transition:transform 0.3s ease;
       pointer-events:auto; display:flex; flex-direction:column; padding:20px; box-sizing:border-box;
-      box-shadow: 10px 0 30px rgba(0,0,0,0.1);
-      z-index: 20;
+      box-shadow: 5px 0 15px rgba(0,0,0,0.05);
     }
     #rdv-panel.open{transform:translateX(0);}
     
-    /* Panel de droite : Dates */
     #table-panel{
-      position:fixed; top:20px; right:20px; width:320px; max-height:88vh;
-      background:var(--panel-bg); backdrop-filter:blur(20px);
-      border:1px solid #ddd; border-radius:16px;
-      transform:translateX(calc(100% + 50px)); transition:transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-      pointer-events:auto; display:flex; flex-direction:column; padding:20px; box-sizing:border-box; overflow-y:auto;
-      box-shadow: -5px 5px 20px rgba(0,0,0,0.05);
-      z-index: 20;
+      position:fixed; top:20px; right:20px; width:280px; max-height:85vh;
+      background:var(--panel-bg); backdrop-filter:blur(10px);
+      border:1px solid var(--selected); border-radius:12px;
+      transform:translateX(calc(100% + 40px)); transition:transform 0.3s ease;
+      pointer-events:auto; display:flex; flex-direction:column; padding:15px; box-sizing:border-box; overflow-y:auto;
     }
     #table-panel.open{transform:translateX(0);}
 
-    /* Responsive Design */
-    @media (max-width: 768px) {
-      #rdv-panel { width: 90%; }
-      #table-panel { width: 90%; right: 5%; top: 60px; max-height: 80vh; }
-      .controls { bottom: 20px; width: 95%; flex-wrap: wrap; justify-content: center;}
-      .btn { flex: 1; padding: 10px; font-size: 12px; margin: 2px;}
-    }
+    .close-btn { align-self:flex-end; cursor:pointer; background:none; border:none; font-size:18px; color:var(--text); padding:5px; }
+    
+    #rdv-form{display:flex; flex-direction:column; gap:8px; margin-bottom:15px; padding-bottom:15px; border-bottom:1px solid #eee;}
+    #rdv-form input, #rdv-form select, #rdv-form textarea, #rdv-form button { padding:8px; border:1px solid #ccc; border-radius:4px; font-size:13px;}
+    
+    #rdv-list-container { flex:1; overflow-y:auto; }
+    .rdv-item { background:white; margin-bottom:8px; padding:10px; border-radius:6px; border-left:5px solid #ccc; position:relative; cursor:pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
+    .rdv-item.prio-1 { border-left-color: var(--prio-1); }
+    .rdv-item.prio-2 { border-left-color: var(--prio-2); }
+    .rdv-item.prio-3 { border-left-color: var(--prio-3); }
+    .delete-rdv { position:absolute; top:5px; right:5px; cursor:pointer; color:#ccc; border:none; background:none; font-size:14px; }
 
-    .close-btn { align-self:flex-end; cursor:pointer; background:none; border:none; font-size:20px; color:var(--text); padding:5px; opacity: 0.6; transition: 0.2s;}
-    .close-btn:hover { opacity: 1; transform: scale(1.1); }
-    
-    #rdv-form{display:flex; flex-direction:column; gap:10px; margin-bottom:20px; padding-bottom:15px; border-bottom:1px solid #eee;}
-    #rdv-form input, #rdv-form select, #rdv-form textarea { padding:12px; border:1px solid #e0e0e0; border-radius:8px; font-size:14px; background: #fff; transition: 0.2s;}
-    #rdv-form input:focus { border-color: var(--selected); outline: none;}
-    
-    /* Style des options dans le select */
-    .opt-prio-1 { color: var(--prio-1); }
-    .opt-prio-2 { color: var(--prio-2); }
-    .opt-prio-3 { color: var(--prio-3); }
+    #table-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:3px; font-size:10px;}
+    .table-day{padding:5px; border:1px solid #f0f0f0; border-radius:4px; text-align:center; cursor:pointer; background:#fff; position: relative;}
+    .table-day.weekend{background:var(--weekend); color:#fff;}
+    .table-day.holiday{background:#e74c3c; color:#fff;}
+    .table-day.today-cell{background:var(--today); color:black; font-weight:bold;}
+    .table-day.selected-cell{border:2px solid var(--selected); background:#fff5f5;}
 
-    #rdv-list-container { flex:1; overflow-y:auto; padding-right:5px;}
-    .rdv-item { background:white; margin-bottom:12px; padding:15px; border-radius:12px; position:relative; cursor:pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.03); border:1px solid #f0f0f0; transition: transform 0.2s;}
-    .rdv-item:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0,0,0,0.08); }
-    
-    /* Icônes d'importance */
-    .rdv-icon { margin-right: 8px; font-size: 1.1em; }
-    .rdv-item.prio-1 { border-left: 5px solid var(--prio-1); }
-    .rdv-item.prio-1 .rdv-icon { color: var(--prio-1); }
-    
-    .rdv-item.prio-2 { border-left: 5px solid var(--prio-2); }
-    .rdv-item.prio-2 .rdv-icon { color: var(--prio-2); }
-    
-    .rdv-item.prio-3 { border-left: 5px solid var(--prio-3); }
-    .rdv-item.prio-3 .rdv-icon { color: var(--prio-3); }
-
-    /* Style de la table Dates */
-    #table-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; font-size:12px; margin-top:10px;}
-    .table-day{padding:10px 5px; border-radius:8px; text-align:center; cursor:pointer; background:#fff; border:1px solid #eee; transition: 0.2s; position: relative;}
-    .table-day:hover { border-color: #bbb; transform: scale(1.05); z-index: 2;}
-    
-    .table-day.weekend{background:var(--bg-light); color:var(--weekend); font-weight:bold; border: 1px dashed var(--weekend);}
-    .table-day.holiday{background:#e74c3c !important; color:#fff !important; font-weight:bold; border: none; box-shadow: 0 2px 8px rgba(231, 76, 60, 0.4);}
-    
-    .table-day.today-cell{background:var(--today-gold); color:#5c4d00; font-weight:800; border: 1px solid #e6c200; box-shadow: 0 0 10px rgba(255, 215, 0, 0.4);}
-    .table-day.selected-cell{border:2px solid var(--selected); background:#fff0f0;}
-
-    /* Légende */
-    .legend { margin-top: 20px; padding-top: 15px; border-top:1px solid #eee; font-size: 12px; color: #666; }
-    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-    .box-holiday { width: 14px; height: 14px; background: #e74c3c; border-radius: 4px; }
-
-    /* Boutons de contrôle */
-    .controls{position:absolute; bottom:30px; left:50%; transform:translateX(-50%); pointer-events:auto; display:flex; gap:15px; z-index: 15;}
-    .btn{background:var(--panel-bg); border:1px solid #ddd; color:#555; padding:12px 24px; border-radius:30px; cursor:pointer; font-weight:600; font-size:14px; transition:all 0.3s; box-shadow: 0 4px 15px rgba(0,0,0,0.08); backdrop-filter: blur(5px);}
-    .btn:hover{background:var(--selected); color:#fff; border-color: var(--selected); transform: translateY(-2px);}
-    
-    /* Bulle informative (Tooltip) personnalisée */
-    #custom-tooltip {
-      position: absolute;
-      background: rgba(44, 62, 80, 0.95);
-      color: #fff;
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.2s, transform 0.1s;
-      z-index: 100;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-      white-space: nowrap;
-      transform: translate(-50%, -120%);
-    }
-    #custom-tooltip::after {
-      content: "";
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      margin-left: -5px;
-      border-width: 5px;
-      border-style: solid;
-      border-color: rgba(44, 62, 80, 0.95) transparent transparent transparent;
-    }
-
-    /* Toast de notification */
-    #toast {
-      position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px);
-      background: #2ecc71; color: white; padding: 10px 20px; border-radius: 30px;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.2); font-weight: bold; z-index: 1000;
-      transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    }
-    #toast.show { transform: translateX(-50%) translateY(0); }
-    #toast.error { background: #e74c3c; }
+    .controls{position:absolute; bottom:20px; left:50%; transform:translateX(-50%); pointer-events:auto; display:flex; gap:10px;}
+    .btn{background:var(--panel-bg); border:1px solid var(--selected); color:var(--selected); padding:10px 14px; border-radius:20px; cursor:pointer; font-weight:bold; font-size:13px; transition:all .3s;}
+    .btn:hover{background:var(--selected); color:#fff;}
   </style>
 </head>
 <body>
-  <!-- Conteneur 3D -->
   <div id="canvas-container"></div>
+  <div id="spiral-tooltip"></div>
   
-  <!-- Interface Utilisateur -->
   <div id="ui-layer">
-    <!-- Bulle Info -->
-    <div id="custom-tooltip"></div>
-    
-    <!-- Notification Toast -->
-    <div id="toast">Message</div>
-
-    <!-- Contrôles : Nouvel ordre demandé -->
     <div class="controls">
-      <button class="btn" id="btn-rdv"><i class="fas fa-calendar-check"></i> MES RDV</button>
-      <button class="btn" id="btn-today"><i class="fas fa-crosshairs"></i> AUJOURD'HUI</button>
-      <button class="btn" id="btn-table"><i class="fas fa-list"></i> DATES</button>
+      <button class="btn" id="btn-today">Aujourd'hui</button>
+      <button class="btn" id="btn-rdv">Mes RDV</button>
+      <button class="btn" id="btn-table">Dates</button>
     </div>
 
-    <!-- Panel RDV -->
     <div id="rdv-panel">
       <button class="close-btn" id="close-rdv">✖</button>
-      <h2 style="margin:0 0 20px 0; color:var(--text);">Nouveau Rendez-vous</h2>
+      <h3 style="margin-top:0;">Nouveau RDV</h3>
       <form id="rdv-form">
-        <input name="title" placeholder="Titre de l'événement" required />
+        <input name="title" placeholder="Titre" required />
         <input name="date" type="date" required />
         <input name="time" type="time" required />
-        <input name="location" placeholder="Lieu (optionnel)" />
-        
-        <select name="priority" id="priority-select">
-          <option value="1" class="opt-prio-1">🟢 Faible</option>
-          <option value="2" class="opt-prio-2">🟡 Moyenne</option>
-          <option value="3" class="opt-prio-3">🔴 Haute</option>
+        <input name="location" placeholder="Lieu" />
+        <select name="priority">
+          <option value="1">Importance : Faible (Vert)</option>
+          <option value="2">Importance : Moyenne (Jaune)</option>
+          <option value="3">Importance : Haute (Rouge)</option>
         </select>
-        
-        <textarea name="description" placeholder="Description..." rows="2" style="resize:none;"></textarea>
-        <button type="submit" style="background:var(--selected); color:white; font-weight:bold; cursor:pointer; border:none; padding:12px; border-radius:8px; font-size:14px; margin-top:5px;">ENREGISTRER</button>
+        <textarea name="description" placeholder="Notes..." rows="2"></textarea>
+        <button type="submit" style="background:var(--selected); color:white; font-weight:bold; cursor:pointer; border:none;">Ajouter</button>
       </form>
-      
-      <h3 style="margin-top:10px; font-size:16px;">Mes Événements</h3>
-      <div id="rdv-list-container"><ul id="rdv-list" style="list-style:none; padding:0; margin:0;"></ul></div>
-      
-      <div style="margin-top:15px; border-top:1px solid #eee; padding-top:15px;">
-        <input type="file" id="import-file" style="display:none;" accept=".json">
-        <button class="btn" onclick="document.getElementById('import-file').click()" style="width:100%; border-color:#ccc; font-size:12px;">
-          <i class="fas fa-file-import"></i> IMPORTER (JSON)
-        </button>
-      </div>
+      <h3>Liste des RDV</h3>
+      <div id="rdv-list-container"><ul id="rdv-list" style="list-style:none; padding:0;"></ul></div>
+      <input type="file" id="import-file" style="display:none;" accept=".json">
+      <button class="btn" onclick="document.getElementById('import-file').click()" style="width:100%; border-color:#4a90e2; color:#4a90e2; margin-top:10px;">Importer RDV (JSON)</button>
     </div>
 
-    <!-- Panel Table Dates -->
     <div id="table-panel">
       <button class="close-btn" id="close-dates">✖</button>
-      <h3 style="margin:0 0 15px 0; font-size:18px;">Calendrier 2026</h3>
+      <h3 style="margin:0 0 10px 0;">Dates 2026</h3>
       <div id="table-grid"></div>
-      
-      <div class="legend">
-        <div class="legend-item">
-          <div class="box-holiday"></div>
-          <span>Jour férié (Survolez pour info)</span>
-        </div>
-      </div>
     </div>
   </div>
 
-  <!-- Scripts Three.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  
   <script>
     const CONFIG={
-      year:2026, 
-      spiralRadius:28, 
-      spiralHeight:70, 
-      turns:3.5, 
-      pointSize:1.0, // Un peu plus gros pour la netteté
-      colors:{ 
-        weekday:0x4a90e2, 
-        weekend:0x2ecc71, 
-        selected:0xff6b6b, 
-        today:0xFFD700 // Code Hexadécimal pour l'Or
-      }
+      year:2026, spiralRadius:28, spiralHeight:70, turns:3.5, pointSize:.8,
+      colors:{ weekday:0x4a90e2, weekend:0x2ecc71, selected:0xff6b6b, today:0xf1c40f }
     };
 
     let scene, camera, renderer, controls, raycaster, pointer, instancedMesh;
     let daysData=[], hoveredIndex=-1, selectedIndex=-1, todayIndex=-1;
-    // On garde le même storage key pour ne pas perdre les données de l'utilisateur
-    let rdvs = JSON.parse(localStorage.getItem('rdv2026_v5') || '[]');
+    let mouseX = 0, mouseY = 0;
+    let rdvs = JSON.parse(localStorage.getItem('rdv2026_v4') || '[]');
 
-    const holidayMap = {
-      '2026-01-01': "Jour de l'An", '2026-04-13': "Lundi de Pâques", '2026-05-01': "Fête du Travail",
-      '2026-05-08': "Victoire 1945", '2026-05-21': "Ascension", '2026-06-01': "Lundi de Pentecôte",
-      '2026-07-14': "Fête Nationale", '2026-08-15': "Assomption", '2026-11-01': "Toussaint",
-      '2026-11-11': "Armistice 1918", '2026-12-25': "Noël"
+    // Dictionnaire des jours fériés avec noms
+    const joursFeries = {
+      '2026-01-01': "Jour de l'An",
+      '2026-04-06': "Lundi de Pâques",
+      '2026-05-01': "Fête du Travail",
+      '2026-05-08': "Victoire 1945",
+      '2026-05-14': "Ascension",
+      '2026-05-25': "Lundi de Pentecôte",
+      '2026-07-14': "Fête Nationale",
+      '2026-08-15': "Assomption",
+      '2026-11-01': "Toussaint",
+      '2026-11-11': "Armistice 1918",
+      '2026-12-25': "Noël"
     };
-
-    // Système de Toast simple
-    function showToast(msg, isError = false) {
-        const t = document.getElementById('toast');
-        t.textContent = msg;
-        t.className = isError ? 'error' : '';
-        t.classList.add('show');
-        setTimeout(() => t.classList.remove('show'), 3000);
-    }
 
     function init(){
       scene=new THREE.Scene(); 
       scene.background=new THREE.Color(0xf5f7fa);
-      // Brouillard subtil pour la profondeur
-      scene.fog = new THREE.FogExp2(0xf5f7fa, 0.006);
+      scene.fog = new THREE.FogExp2(0xf5f7fa, 0.008);
 
       camera=new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
       camera.position.set(60, 50, 60);
 
-      renderer=new THREE.WebGLRenderer({antialias:true, alpha: true});
-      renderer.setPixelRatio(window.devicePixelRatio); // Pour la netteté sur écrans Retina
+      renderer=new THREE.WebGLRenderer({antialias:true});
+      renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(window.innerWidth, window.innerHeight);
-      // Amélioration du rendu des couleurs
-      renderer.outputEncoding = THREE.sRGBEncoding;
-      renderer.physicallyCorrectLights = true;
-      
       document.getElementById('canvas-container').appendChild(renderer.domElement);
       
-      // Éclairage amélioré
-      const hemi=new THREE.HemisphereLight(0xffffff, 0x444444, 1.5); 
+      const hemi=new THREE.HemisphereLight(0xffffff, 0x444444, 1.2); 
       scene.add(hemi);
-      
-      const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-      dirLight.position.set(50, 100, 50);
-      scene.add(dirLight);
 
       controls=new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
-      controls.minDistance = 20;
-      controls.maxDistance = 150;
 
-      raycaster=new THREE.Raycaster(); pointer=new THREE.Vector2();
+      raycaster=new THREE.Raycaster(); 
+      pointer=new THREE.Vector2();
 
       buildSpiral();
-      buildStars(); // Ajout de l'ambiance "espace temps"
       buildTable();
       renderRDVList();
 
-      // Gestionnaire d'événements
       window.addEventListener('mousemove', onPointer);
       window.addEventListener('click', onClick);
       document.getElementById('rdv-form').addEventListener('submit', addRDV);
-      
-      // Ouverture des panneaux
       document.getElementById('btn-rdv').addEventListener('click', ()=>document.getElementById('rdv-panel').classList.add('open'));
       document.getElementById('btn-table').addEventListener('click', ()=>document.getElementById('table-panel').classList.add('open'));
-      
-      // Fermeture des panneaux
       document.getElementById('close-rdv').addEventListener('click', ()=>document.getElementById('rdv-panel').classList.remove('open'));
       document.getElementById('close-dates').addEventListener('click', ()=>document.getElementById('table-panel').classList.remove('open'));
-      
-      // Actions
       document.getElementById('btn-today').addEventListener('click', focusToday);
       document.getElementById('import-file').addEventListener('change', importRDVs);
       
       animate();
     }
 
-    function buildStars() {
-        // Création d'un champ d'étoiles/particules pour l'ambiance
-        const starGeo = new THREE.BufferGeometry();
-        const starCount = 1000;
-        const posArray = new Float32Array(starCount * 3);
-        for(let i=0; i<starCount*3; i++) {
-            posArray[i] = (Math.random() - 0.5) * 300; // Large dispersion
-        }
-        starGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-        const starMat = new THREE.PointsMaterial({
-            size: 0.7, 
-            color: 0xaaaaaa,
-            transparent: true,
-            opacity: 0.6
-        });
-        const stars = new THREE.Points(starGeo, starMat);
-        scene.add(stars);
-    }
-
     function buildSpiral(){
       const total = 365;
-      // Augmentation des segments pour la netteté (16 -> 32)
-      const geo = new THREE.SphereGeometry(CONFIG.pointSize, 32, 32);
-      
-      // Matériau plus physique et net
-      const mat = new THREE.MeshPhysicalMaterial({
-          color: 0xffffff,
-          roughness: 0.2,
-          metalness: 0.3,
-          clearcoat: 0.5,
-          clearcoatRoughness: 0.1
-      });
-      
+      const geo = new THREE.SphereGeometry(CONFIG.pointSize, 16, 16);
+      const mat = new THREE.MeshStandardMaterial({roughness:.3, metalness:.2});
       instancedMesh = new THREE.InstancedMesh(geo, mat, total);
       instancedMesh.userData.originalColors = [];
       
@@ -345,7 +198,6 @@
       const color = new THREE.Color();
       let cur = new Date(CONFIG.year, 0, 1);
       const now = new Date();
-      const todayStr = now.toISOString().split('T')[0];
 
       for(let i=0; i<total; i++){
         const t = i/total;
@@ -354,41 +206,40 @@
         const z = Math.sin(angle) * CONFIG.spiralRadius;
         const y = (t * CONFIG.spiralHeight) - (CONFIG.spiralHeight/2);
         
-        dummy.position.set(x, y, z); dummy.updateMatrix();
+        dummy.position.set(x, y, z); 
+        dummy.updateMatrix();
         instancedMesh.setMatrixAt(i, dummy.matrix);
 
         const isWeekend = cur.getDay() === 0 || cur.getDay() === 6;
+        if(isWeekend) color.setHex(CONFIG.colors.weekend);
+        else color.setHex(CONFIG.colors.weekday);
+        
         const dateStr = cur.toISOString().split('T')[0];
-
-        if(dateStr === todayStr) {
+        if(dateStr === now.toISOString().split('T')[0]) {
           todayIndex = i;
           color.setHex(CONFIG.colors.today);
-          // Pour le "Aujourd'hui", on va aussi forcer une couleur émissive plus tard ou via une lumière proche,
-          // mais ici on met la base or.
-        } else if(isWeekend) {
-          color.setHex(CONFIG.colors.weekend);
-        } else {
-          color.setHex(CONFIG.colors.weekday);
         }
 
         instancedMesh.setColorAt(i, color);
         instancedMesh.userData.originalColors.push(color.clone());
         daysData.push({ 
-            index: i, dateStr: dateStr, pos: new THREE.Vector3(x,y,z),
-            monthIndex: cur.getMonth(), fullDate: cur.toLocaleDateString('fr-FR', {day:'numeric', month:'long'})
+            index: i, 
+            dateStr: dateStr, 
+            pos: new THREE.Vector3(x,y,z),
+            monthIndex: cur.getMonth(),
+            fullDate: cur.toLocaleDateString('fr-FR', {weekday: 'long', day:'numeric', month:'long'})
         });
         cur.setDate(cur.getDate()+1);
       }
       scene.add(instancedMesh);
 
-      // Étiquettes des mois (Sprite Text)
       const months=["JANVIER","FÉVRIER","MARS","AVRIL","MAI","JUIN","JUILLET","AOÛT","SEPTEMBRE","OCTOBRE","NOVEMBRE","DÉCEMBRE"];
       months.forEach((name, mIdx)=>{
         const d = daysData.find(dd => dd.monthIndex === mIdx && dd.fullDate.includes('15'));
         if(d){
-          const sprite = createTextSprite(name, 1.4);
+          const sprite = createTextSprite(name, 1.3);
           const angle = Math.atan2(d.pos.z, d.pos.x);
-          sprite.position.set(d.pos.x + Math.cos(angle)*8, d.pos.y, d.pos.z + Math.sin(angle)*8);
+          sprite.position.set(d.pos.x + Math.cos(angle)*7, d.pos.y, d.pos.z + Math.sin(angle)*7);
           scene.add(sprite);
         }
       });
@@ -396,14 +247,11 @@
 
     function createTextSprite(msg, scale=1){
       const canvas=document.createElement('canvas'), ctx=canvas.getContext('2d');
-      // Meilleure qualité de canvas
-      canvas.width=1024; canvas.height=256; 
-      ctx.font='bold 90px Arial'; 
-      ctx.fillStyle='rgba(44,62,80,1)';
+      canvas.width=512; canvas.height=128; 
+      ctx.font='bold 48px Arial';
+      ctx.fillStyle='rgba(44,62,80,1)'; 
       ctx.textAlign='center'; 
-      ctx.textBaseline='middle';
-      ctx.fillText(msg, 512, 128);
-      
+      ctx.fillText(msg, 256, 80);
       const map=new THREE.CanvasTexture(canvas);
       const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map, transparent:true}));
       sprite.scale.set(10*scale, 2.5*scale, 1); 
@@ -413,81 +261,68 @@
     function buildTable(){
       const grid = document.getElementById('table-grid'); grid.innerHTML = '';
       const months = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-      const todayStr = new Date().toISOString().split('T')[0];
-      const tooltip = document.getElementById('custom-tooltip');
-
       months.forEach((mName, mIdx) => {
         const header = document.createElement('div');
-        header.style = "grid-column: span 7; font-weight:bold; padding:15px 0 5px 0; color:var(--text); font-size:14px; border-bottom:1px solid #eee;";
+        header.style = "grid-column: span 7; font-weight:bold; padding:8px 0; color:var(--text); border-bottom:1px solid #eee;";
         header.textContent = mName; grid.appendChild(header);
 
         ['L','M','M','J','V','S','D'].forEach(d => {
-          const dh = document.createElement('div'); dh.style="text-align:center; font-size:10px; color:#999; padding-bottom:5px;";
+          const dh = document.createElement('div'); dh.style="text-align:center; font-weight:bold; font-size:9px;";
           dh.textContent = d; grid.appendChild(dh);
         });
 
-        const first = new Date(CONFIG.year, mIdx, 1).getDay();
+        const first = new Date(2026, mIdx, 1).getDay();
         const offset = first === 0 ? 6 : first - 1;
         for(let i=0; i<offset; i++) grid.appendChild(document.createElement('div'));
 
-        const daysInMonth = new Date(CONFIG.year, mIdx+1, 0).getDate();
+        const daysInMonth = new Date(2026, mIdx+1, 0).getDate();
         for(let d=1; d<=daysInMonth; d++){
           const dateStr = `2026-${String(mIdx+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
           const dayEl = document.createElement('div');
-          dayEl.className = 'table-day'; dayEl.id = 'table-day-' + dateStr; dayEl.textContent = d;
+          dayEl.className = 'table-day'; 
+          dayEl.id = 'table-day-' + dateStr; 
+          dayEl.textContent = d;
           
-          // Gestion Tooltip Jours Fériés
-          if(holidayMap[dateStr]) {
+          // Gestion des jours fériés avec Bulle Info (Title)
+          if(joursFeries[dateStr]) {
             dayEl.classList.add('holiday');
-            // Événements pour la bulle informative
-            dayEl.addEventListener('mouseenter', (e) => {
-                tooltip.textContent = holidayMap[dateStr];
-                tooltip.style.opacity = 1;
-                // Positionnement
-                const rect = dayEl.getBoundingClientRect();
-                tooltip.style.left = (rect.left + rect.width / 2) + 'px';
-                tooltip.style.top = rect.top + 'px';
-            });
-            dayEl.addEventListener('mouseleave', () => {
-                tooltip.style.opacity = 0;
-            });
+            dayEl.title = joursFeries[dateStr]; // Bulle info native
           }
+
+          const isWeekend = new Date(2026, mIdx, d).getDay() % 6 === 0;
+          if(isWeekend) dayEl.classList.add('weekend');
           
-          const isWeekend = new Date(CONFIG.year, mIdx, d).getDay() % 6 === 0;
-          if(isWeekend && !holidayMap[dateStr]) dayEl.classList.add('weekend');
-          if(dateStr === todayStr) dayEl.classList.add('today-cell');
+          if(dateStr === new Date().toISOString().split('T')[0]) dayEl.classList.add('today-cell');
           
-          dayEl.onclick = () => focusDayIndex(daysData.findIndex(dd => dd.dateStr === dateStr));
+          dayEl.onclick = () => {
+            const idx = daysData.findIndex(dd => dd.dateStr === dateStr);
+            focusDayIndex(idx);
+          };
           grid.appendChild(dayEl);
         }
       });
     }
 
-    function onClick(){ if(hoveredIndex !== -1) focusDayIndex(hoveredIndex); }
+    function onClick(){
+      if(hoveredIndex !== -1) focusDayIndex(hoveredIndex);
+    }
 
     function focusDayIndex(index){
       if(index === -1) return;
       const d = daysData[index];
 
-      // Couleur selectionnée
       if(selectedIndex !== -1 && selectedIndex !== todayIndex){
         instancedMesh.setColorAt(selectedIndex, instancedMesh.userData.originalColors[selectedIndex]);
       }
       selectedIndex = index;
       instancedMesh.setColorAt(selectedIndex, new THREE.Color(CONFIG.colors.selected));
-      
-      // Rendre le today spécialement brillant si on clique dessus (ou le laisser or)
-      if(selectedIndex === todayIndex) {
-          instancedMesh.setColorAt(selectedIndex, new THREE.Color(CONFIG.colors.today));
-      }
-      
       instancedMesh.instanceColor.needsUpdate = true;
 
-      // Mouvement caméra fluide
       const targetPos = new THREE.Vector3(d.pos.x + 15, d.pos.y + 8, d.pos.z + 15);
-      let alpha = 0; const startPos = camera.position.clone();
+      let alpha = 0;
+      const startPos = camera.position.clone();
       function move(){
-        alpha += 0.05;
+        alpha += 0.04;
         camera.position.lerpVectors(startPos, targetPos, alpha);
         controls.target.lerp(d.pos, 0.1);
         controls.update();
@@ -495,120 +330,87 @@
       }
       move();
 
-      // Highlight dans la table
       document.querySelectorAll('.table-day').forEach(el => el.classList.remove('selected-cell'));
       const tableEl = document.getElementById('table-day-' + d.dateStr);
       if(tableEl) {
         tableEl.classList.add('selected-cell');
         tableEl.scrollIntoView({behavior:'smooth', block:'center'});
       }
-      // Pré-remplissage formulaire
       document.getElementById('rdv-form')['date'].value = d.dateStr;
     }
 
     function addRDV(e){
       e.preventDefault();
       const fd = new FormData(e.target);
-      const newRDV = {
+      rdvs.push({
         id: Date.now(), title: fd.get('title'), date: fd.get('date'), time: fd.get('time'),
         location: fd.get('location'), priority: fd.get('priority'), description: fd.get('description')
-      };
-      rdvs.push(newRDV);
-      localStorage.setItem('rdv2026_v5', JSON.stringify(rdvs));
-      renderRDVList(); 
-      e.target.reset();
-      showToast("Rendez-vous enregistré !");
+      });
+      localStorage.setItem('rdv2026_v4', JSON.stringify(rdvs));
+      renderRDVList(); e.target.reset();
     }
 
     function renderRDVList(){
       const list = document.getElementById('rdv-list'); list.innerHTML = '';
-      // Tri par date
       rdvs.sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
-      
       rdvs.forEach(r => {
         const li = document.createElement('li');
         li.className = `rdv-item prio-${r.priority}`;
-        
-        // Mapping des icônes selon la priorité (FontAwesome)
-        let iconClass = 'fa-flag';
-        if(r.priority == 1) iconClass = 'fa-arrow-down'; // Faible
-        if(r.priority == 3) iconClass = 'fa-fire'; // Haute / Urgent
-        
-        // Utilisation de vraies icônes couleur
-        li.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div style="display:flex; align-items:center;">
-                    <i class="fas ${iconClass} rdv-icon"></i>
-                    <div>
-                        <strong style="font-size:14px;">${r.title}</strong>
-                        <br><small style="color:#777;">📅 ${new Date(r.date).toLocaleDateString('fr-FR')} à ${r.time}</small>
-                    </div>
-                </div>
-                <button class="close-btn" style="font-size:16px;" onclick="event.stopPropagation(); deleteRDV(${r.id})">✖</button>
-            </div>
-        `;
-        li.onclick = () => {
-            focusDayIndex(daysData.findIndex(dd => dd.dateStr === r.date));
-            // Optionnel : fermer le panel sur mobile après clic
-            if(window.innerWidth < 768) document.getElementById('rdv-panel').classList.remove('open');
-        };
+        li.innerHTML = `<strong>${r.title}</strong><br><small>📅 ${r.date} - ${r.time}</small><button class="delete-rdv" onclick="event.stopPropagation(); deleteRDV(${r.id})">✖</button>`;
+        li.onclick = () => focusDayIndex(daysData.findIndex(dd => dd.dateStr === r.date));
         list.appendChild(li);
       });
     }
 
     function deleteRDV(id){
-      if(confirm('Supprimer ce rendez-vous ?')) {
-          rdvs = rdvs.filter(r => r.id !== id);
-          localStorage.setItem('rdv2026_v5', JSON.stringify(rdvs));
-          renderRDVList();
-          showToast("Rendez-vous supprimé");
-      }
+      rdvs = rdvs.filter(r => r.id !== id);
+      localStorage.setItem('rdv2026_v4', JSON.stringify(rdvs));
+      renderRDVList();
     }
 
     function importRDVs(e){
       const reader = new FileReader();
       reader.onload = (ev) => {
         try { 
-            const imported = JSON.parse(ev.target.result);
-            if(Array.isArray(imported)) {
-                rdvs = rdvs.concat(imported); 
-                localStorage.setItem('rdv2026_v5', JSON.stringify(rdvs)); 
-                renderRDVList(); 
-                showToast(`${imported.length} RDV importés`);
-            } else {
-                throw new Error("Format invalide");
-            }
-        } 
-        catch(err) { showToast("Erreur lors de l'import", true); }
+          const data = JSON.parse(ev.target.result);
+          rdvs = rdvs.concat(data); 
+          localStorage.setItem('rdv2026_v4', JSON.stringify(rdvs)); 
+          renderRDVList(); 
+        } catch(err) { alert("Format JSON invalide"); }
       };
       reader.readAsText(e.target.files[0]);
     }
 
-    function focusToday(){ 
-        if(todayIndex !== -1) {
-            focusDayIndex(todayIndex);
-            // Petit effet visuel supplémentaire pour aujourd'hui
-            const color = new THREE.Color(CONFIG.colors.today);
-            // On pourrait ajouter une animation ici si désiré
-        }
-    }
+    function focusToday(){ if(todayIndex !== -1) focusDayIndex(todayIndex); }
     
-    function onPointer(e){ pointer.x = (e.clientX/window.innerWidth)*2-1; pointer.y = -(e.clientY/window.innerHeight)*2+1; }
+    function onPointer(e){ 
+      pointer.x = (e.clientX/window.innerWidth)*2-1; 
+      pointer.y = -(e.clientY/window.innerHeight)*2+1; 
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    }
 
     function animate(){
       requestAnimationFrame(animate);
       controls.update();
-      
       raycaster.setFromCamera(pointer, camera);
       const inter = raycaster.intersectObject(instancedMesh);
-      
+      const tooltip = document.getElementById('spiral-tooltip');
+
       if(inter.length) {
-        if(hoveredIndex !== inter[0].instanceId) {
-            hoveredIndex = inter[0].instanceId;
-            document.body.style.cursor = 'pointer';
-        }
+        hoveredIndex = inter[0].instanceId;
+        const data = daysData[hoveredIndex];
+        
+        // Affichage de la bulle info spirale
+        tooltip.style.display = 'block';
+        tooltip.style.left = mouseX + 'px';
+        tooltip.style.top = mouseY + 'px';
+        tooltip.innerHTML = `<strong>${data.fullDate}</strong>`;
+        
+        document.body.style.cursor = 'pointer';
       } else {
         hoveredIndex = -1;
+        tooltip.style.display = 'none';
         document.body.style.cursor = 'default';
       }
       
