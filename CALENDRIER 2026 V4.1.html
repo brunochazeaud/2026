@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Calendrier Spirale 2026 V4.3</title>
+  <style>
+    :root{
+      --bg-light:#f5f7fa;
+      --weekday:#4a90e2;
+      --weekend:#2ecc71;
+      --selected:#ff6b6b;
+      --today:#fff9c4; /* Or très clair */
+      --holiday-blue: #3498db; /* Nouveau bleu pour les jours fériés */
+      --text:#2c3e50;
+      --panel-bg:rgba(255,255,255,.95);
+      --prio-1: #2ecc71;
+      --prio-2: #f1c40f;
+      --prio-3: #e74c3c;
+    }
+    body{margin:0;font-family:'Segoe UI',sans-serif;overflow:hidden;background:var(--bg-light);}
+    #canvas-container{width:100vw;height:100vh;display:block;}
+    #ui-layer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;}
+    
+    /* Bulle info pour la spirale */
+    #spiral-tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: rgba(44, 62, 80, 0.9);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+      z-index: 100;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      transform: translate(15px, 15px);
+    }
+
+    #rdv-panel{
+      position:fixed; top:0; left:0; width:350px; height:100%;
+      background:var(--panel-bg); backdrop-filter:blur(10px);
+      border-right:1px solid var(--selected);
+      transform:translateX(-100%); transition:transform 0.3s ease;
+      pointer-events:auto; display:flex; flex-direction:column; padding:20px; box-sizing:border-box;
+      box-shadow: 5px 0 15px rgba(0,0,0,0.05);
+    }
+    #rdv-panel.open{transform:translateX(0);}
+    
+    #table-panel{
+      position:fixed; top:20px; right:20px; width:280px; max-height:85vh;
+      background:var(--panel-bg); backdrop-filter:blur(10px);
+      border:1px solid var(--selected); border-radius:12px;
+      transform:translateX(calc(100% + 40px)); transition:transform 0.3s ease;
+      pointer-events:auto; display:flex; flex-direction:column; padding:15px; box-sizing:border-box; overflow-y:auto;
+    }
+    #table-panel.open{transform:translateX(0);}
+
+    .close-btn { align-self:flex-end; cursor:pointer; background:none; border:none; font-size:18px; color:var(--text); padding:5px; }
+    
+    #rdv-form{display:flex; flex-direction:column; gap:8px; margin-bottom:15px; padding-bottom:15px; border-bottom:1px solid #eee;}
+    #rdv-form input, #rdv-form select, #rdv-form textarea, #rdv-form button { padding:8px; border:1px solid #ccc; border-radius:4px; font-size:13px;}
+    
+    #rdv-list-container { flex:1; overflow-y:auto; }
+    .rdv-item { background:white; margin-bottom:8px; padding:10px; border-radius:6px; border-left:5px solid #ccc; position:relative; cursor:pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
+    .rdv-item.prio-1 { border-left-color: var(--prio-1); }
+    .rdv-item.prio-2 { border-left-color: var(--prio-2); }
+    .rdv-item.prio-3 { border-left-color: var(--prio-3); }
+    .delete-rdv { position:absolute; top:5px; right:5px; cursor:pointer; color:#ccc; border:none; background:none; font-size:14px; }
+
+    #table-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:3px; font-size:10px;}
+    .table-day{padding:5px; border:1px solid #f0f0f0; border-radius:4px; text-align:center; cursor:pointer; background:#fff; position: relative;}
+    .table-day.weekend{background:var(--weekend); color:#fff;}
+    .table-day.holiday{background:var(--holiday-blue); color:#fff;} /* Changé en bleu */
+    .table-day.today-cell{background:var(--today); color:black; font-weight:bold; border: 1px solid #d4af37;}
+    .table-day.selected-cell{border:2px solid var(--selected); background:#fff5f5;}
+
+    .controls{position:absolute; bottom:20px; left:50%; transform:translateX(-50%); pointer-events:auto; display:flex; gap:10px;}
+    .btn{background:var(--panel-bg); border:1px solid var(--selected); color:var(--selected); padding:10px 14px; border-radius:20px; cursor:pointer; font-weight:bold; font-size:13px; transition:all .3s;}
+    .btn:hover{background:var(--selected); color:#fff;}
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  <div id="spiral-tooltip"></div>
+  
+  <div id="ui-layer">
+    <div class="controls">
+      <button class="btn" id="btn-today">Aujourd'hui</button>
+      <button class="btn" id="btn-rdv">Mes RDV</button>
+      <button class="btn" id="btn-table">Table</button>
+    </div>
+
+    <div id="rdv-panel">
+      <button class="close-btn" id="close-rdv">✖</button>
+      <h3 style="margin-top:0;">Nouveau RDV</h3>
+      <form id="rdv-form">
+        <input name="title" placeholder="Titre" required />
+        <input name="date" type="date" required />
+        <input name="time" type="time" required />
+        <input name="location" placeholder="Lieu" />
+        <select name="priority">
+          <option value="1">Importance : Faible (Vert)</option>
+          <option value="2">Importance : Moyenne (Jaune)</option>
+          <option value="3">Importance : Haute (Rouge)</option>
+        </select>
+        <textarea name="description" placeholder="Notes..." rows="2"></textarea>
+        <button type="submit" style="background:var(--selected); color:white; font-weight:bold; cursor:pointer; border:none;">Ajouter</button>
+      </form>
+      <h3>Liste des RDV</h3>
+      <div id="rdv-list-container"><ul id="rdv-list" style="list-style:none; padding:0;"></ul></div>
+      <input type="file" id="import-file" style="display:none;" accept=".json">
+      <button class="btn" onclick="document.getElementById('import-file').click()" style="width:100%; border-color:#4a90e2; color:#4a90e2; margin-top:10px;">Importer RDV (JSON)</button>
+    </div>
+
+    <div id="table-panel">
+      <button class="close-btn" id="close-dates">✖</button>
+      <h3 style="margin:0 0 10px 0;">Table 2026</h3>
+      <div id="table-grid"></div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script>
+    const CONFIG={
+      year:2026, spiralRadius:28, spiralHeight:70, turns:3.5, pointSize:.8,
+      colors:{ 
+        weekday:0x4a90e2, 
+        weekend:0x2ecc71, 
+        selected:0xff6b6b, 
+        today:0xfff9c4 // Or très clair
+      }
+    };
+
+    let scene, camera, renderer, controls, raycaster, pointer, instancedMesh;
+    let daysData=[], hoveredIndex=-1, selectedIndex=-1, todayIndex=-1;
+    let mouseX = 0, mouseY = 0;
+    let rdvs = JSON.parse(localStorage.getItem('rdv2026_v4') || '[]');
+
+    const nomsJoursFeries = {
+      '2026-01-01': "Jour de l'An",
+      '2026-04-06': "Lundi de Pâques",
+      '2026-05-01': "Fête du Travail",
+      '2026-05-08': "Victoire 1945",
+      '2026-05-14': "Ascension",
+      '2026-05-25': "Lundi de Pentecôte",
+      '2026-07-14': "Fête Nationale",
+      '2026-08-15': "Assomption",
+      '2026-11-01': "Toussaint",
+      '2026-11-11': "Armistice 1918",
+      '2026-12-25': "Noël"
+    };
+
+    function init(){
+      scene=new THREE.Scene(); 
+      scene.background=new THREE.Color(0xf5f7fa);
+      // EFFET DE BRUME ENLEVÉ ICI pour une clarté totale au dézoom
+
+      camera=new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 2000);
+      camera.position.set(60, 50, 60);
+
+      renderer=new THREE.WebGLRenderer({antialias:true});
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.getElementById('canvas-container').appendChild(renderer.domElement);
+      
+      const hemi=new THREE.HemisphereLight(0xffffff, 0x444444, 1.2); 
+      scene.add(hemi);
+
+      controls=new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      raycaster=new THREE.Raycaster(); 
+      pointer=new THREE.Vector2();
+
+      buildSpiral();
+      buildTable();
+      renderRDVList();
+
+      window.addEventListener('mousemove', onPointer);
+      window.addEventListener('click', onClick);
+      document.getElementById('rdv-form').addEventListener('submit', addRDV);
+      document.getElementById('btn-rdv').addEventListener('click', ()=>document.getElementById('rdv-panel').classList.add('open'));
+      document.getElementById('btn-table').addEventListener('click', ()=>document.getElementById('table-panel').classList.add('open'));
+      document.getElementById('close-rdv').addEventListener('click', ()=>document.getElementById('rdv-panel').classList.remove('open'));
+      document.getElementById('close-dates').addEventListener('click', ()=>document.getElementById('table-panel').classList.remove('open'));
+      document.getElementById('btn-today').addEventListener('click', focusToday);
+      document.getElementById('import-file').addEventListener('change', importRDVs);
+      
+      animate();
+    }
+
+    function buildSpiral(){
+      const total = 365;
+      const geo = new THREE.SphereGeometry(CONFIG.pointSize, 16, 16);
+      const mat = new THREE.MeshStandardMaterial({roughness:.3, metalness:.2});
+      instancedMesh = new THREE.InstancedMesh(geo, mat, total);
+      instancedMesh.userData.originalColors = [];
+      
+      const dummy = new THREE.Object3D();
+      const color = new THREE.Color();
+      let cur = new Date(CONFIG.year, 0, 1);
+      const now = new Date();
+
+      for(let i=0; i<total; i++){
+        const t = i/total;
+        const angle = t * Math.PI * 2 * CONFIG.turns;
+        const x = Math.cos(angle) * CONFIG.spiralRadius;
+        const z = Math.sin(angle) * CONFIG.spiralRadius;
+        const y = (t * CONFIG.spiralHeight) - (CONFIG.spiralHeight/2);
+        
+        dummy.position.set(x, y, z); 
+        dummy.updateMatrix();
+        instancedMesh.setMatrixAt(i, dummy.matrix);
+
+        const isWeekend = cur.getDay() === 0 || cur.getDay() === 6;
+        if(isWeekend) color.setHex(CONFIG.colors.weekend);
+        else color.setHex(CONFIG.colors.weekday);
+        
+        const dateStr = cur.toISOString().split('T')[0];
+        if(dateStr === now.toISOString().split('T')[0]) {
+          todayIndex = i;
+          color.setHex(CONFIG.colors.today);
+        }
+
+        instancedMesh.setColorAt(i, color);
+        instancedMesh.userData.originalColors.push(color.clone());
+        daysData.push({ 
+            index: i, 
+            dateStr: dateStr, 
+            pos: new THREE.Vector3(x,y,z),
+            monthIndex: cur.getMonth(),
+            fullDate: cur.toLocaleDateString('fr-FR', {weekday: 'long', day:'numeric', month:'long'})
+        });
+        cur.setDate(cur.getDate()+1);
+      }
+      scene.add(instancedMesh);
+
+      const months=["JANVIER","FÉVRIER","MARS","AVRIL","MAI","JUIN","JUILLET","AOÛT","SEPTEMBRE","OCTOBRE","NOVEMBRE","DÉCEMBRE"];
+      months.forEach((name, mIdx)=>{
+        const d = daysData.find(dd => dd.monthIndex === mIdx && dd.fullDate.includes('15'));
+        if(d){
+          const sprite = createTextSprite(name, 1.3);
+          const angle = Math.atan2(d.pos.z, d.pos.x);
+          sprite.position.set(d.pos.x + Math.cos(angle)*7, d.pos.y, d.pos.z + Math.sin(angle)*7);
+          scene.add(sprite);
+        }
+      });
+    }
+
+    function createTextSprite(msg, scale=1){
+      const canvas=document.createElement('canvas'), ctx=canvas.getContext('2d');
+      canvas.width=512; canvas.height=128; 
+      ctx.font='bold 48px Arial';
+      ctx.fillStyle='rgba(44,62,80,1)'; 
+      ctx.textAlign='center'; 
+      ctx.fillText(msg, 256, 80);
+      const map=new THREE.CanvasTexture(canvas);
+      const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map, transparent:true}));
+      sprite.scale.set(10*scale, 2.5*scale, 1); 
+      return sprite;
+    }
+
+    function buildTable(){
+      const grid = document.getElementById('table-grid'); grid.innerHTML = '';
+      const months = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+      months.forEach((mName, mIdx) => {
+        const header = document.createElement('div');
+        header.style = "grid-column: span 7; font-weight:bold; padding:8px 0; color:var(--text); border-bottom:1px solid #eee;";
+        header.textContent = mName; grid.appendChild(header);
+
+        ['L','M','M','J','V','S','D'].forEach(d => {
+          const dh = document.createElement('div'); dh.style="text-align:center; font-weight:bold; font-size:9px;";
+          dh.textContent = d; grid.appendChild(dh);
+        });
+
+        const first = new Date(2026, mIdx, 1).getDay();
+        const offset = first === 0 ? 6 : first - 1;
+        for(let i=0; i<offset; i++) grid.appendChild(document.createElement('div'));
+
+        const daysInMonth = new Date(2026, mIdx+1, 0).getDate();
+        for(let d=1; d<=daysInMonth; d++){
+          const dateStr = `2026-${String(mIdx+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          const dayEl = document.createElement('div');
+          dayEl.className = 'table-day'; 
+          dayEl.id = 'table-day-' + dateStr; 
+          dayEl.textContent = d;
+          
+          // AJOUT DE L'INFO BULLE ICI (Attribut Title)
+          if(nomsJoursFeries[dateStr]) {
+            dayEl.classList.add('holiday');
+            dayEl.title = nomsJoursFeries[dateStr]; // Bulle info au survol
+          }
+
+          const isWeekend = new Date(2026, mIdx, d).getDay() % 6 === 0;
+          if(isWeekend) dayEl.classList.add('weekend');
+          
+          if(dateStr === new Date().toISOString().split('T')[0]) dayEl.classList.add('today-cell');
+          
+          dayEl.onclick = () => {
+            const idx = daysData.findIndex(dd => dd.dateStr === dateStr);
+            focusDayIndex(idx);
+          };
+          grid.appendChild(dayEl);
+        }
+      });
+    }
+
+    function onClick(){
+      if(hoveredIndex !== -1) focusDayIndex(hoveredIndex);
+    }
+
+    function focusDayIndex(index){
+      if(index === -1) return;
+      const d = daysData[index];
+
+      if(selectedIndex !== -1 && selectedIndex !== todayIndex){
+        instancedMesh.setColorAt(selectedIndex, instancedMesh.userData.originalColors[selectedIndex]);
+      }
+      selectedIndex = index;
+      instancedMesh.setColorAt(selectedIndex, new THREE.Color(CONFIG.colors.selected));
+      instancedMesh.instanceColor.needsUpdate = true;
+
+      const targetPos = new THREE.Vector3(d.pos.x + 15, d.pos.y + 8, d.pos.z + 15);
+      let alpha = 0;
+      const startPos = camera.position.clone();
+      function move(){
+        alpha += 0.04;
+        camera.position.lerpVectors(startPos, targetPos, alpha);
+        controls.target.lerp(d.pos, 0.1);
+        controls.update();
+        if(alpha < 1) requestAnimationFrame(move);
+      }
+      move();
+
+      document.querySelectorAll('.table-day').forEach(el => el.classList.remove('selected-cell'));
+      const tableEl = document.getElementById('table-day-' + d.dateStr);
+      if(tableEl) {
+        tableEl.classList.add('selected-cell');
+        tableEl.scrollIntoView({behavior:'smooth', block:'center'});
+      }
+      document.getElementById('rdv-form')['date'].value = d.dateStr;
+    }
+
+    function addRDV(e){
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      rdvs.push({
+        id: Date.now(), title: fd.get('title'), date: fd.get('date'), time: fd.get('time'),
+        location: fd.get('location'), priority: fd.get('priority'), description: fd.get('description')
+      });
+      localStorage.setItem('rdv2026_v4', JSON.stringify(rdvs));
+      renderRDVList(); e.target.reset();
+    }
+
+    function renderRDVList(){
+      const list = document.getElementById('rdv-list'); list.innerHTML = '';
+      rdvs.sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
+      rdvs.forEach(r => {
+        const li = document.createElement('li');
+        li.className = `rdv-item prio-${r.priority}`;
+        li.innerHTML = `<strong>${r.title}</strong><br><small>📅 ${r.date} - ${r.time}</small><button class="delete-rdv" onclick="event.stopPropagation(); deleteRDV(${r.id})">✖</button>`;
+        li.onclick = () => focusDayIndex(daysData.findIndex(dd => dd.dateStr === r.date));
+        list.appendChild(li);
+      });
+    }
+
+    function deleteRDV(id){
+      rdvs = rdvs.filter(r => r.id !== id);
+      localStorage.setItem('rdv2026_v4', JSON.stringify(rdvs));
+      renderRDVList();
+    }
+
+    function importRDVs(e){
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try { 
+          const data = JSON.parse(ev.target.result);
+          rdvs = rdvs.concat(data); 
+          localStorage.setItem('rdv2026_v4', JSON.stringify(rdvs)); 
+          renderRDVList(); 
+        } catch(err) { alert("Format JSON invalide"); }
+      };
+      reader.readAsText(e.target.files[0]);
+    }
+
+    function focusToday(){ if(todayIndex !== -1) focusDayIndex(todayIndex); }
+    
+    function onPointer(e){ 
+      pointer.x = (e.clientX/window.innerWidth)*2-1; 
+      pointer.y = -(e.clientY/window.innerHeight)*2+1; 
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    }
+
+    function animate(){
+      requestAnimationFrame(animate);
+      controls.update();
+      raycaster.setFromCamera(pointer, camera);
+      const inter = raycaster.intersectObject(instancedMesh);
+      const tooltip = document.getElementById('spiral-tooltip');
+
+      if(inter.length) {
+        hoveredIndex = inter[0].instanceId;
+        const data = daysData[hoveredIndex];
+        
+        tooltip.style.display = 'block';
+        tooltip.style.left = mouseX + 'px';
+        tooltip.style.top = mouseY + 'px';
+        tooltip.innerHTML = `<strong>${data.fullDate}</strong>`;
+        
+        document.body.style.cursor = 'pointer';
+      } else {
+        hoveredIndex = -1;
+        tooltip.style.display = 'none';
+        document.body.style.cursor = 'default';
+      }
+      
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    init();
+  </script>
+</body>
+</html>
